@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "GitCheck": {
+      "commandName": "Project",
+      "workingDirectory": "D:\\Projetos"
+    }
+  }
+}
