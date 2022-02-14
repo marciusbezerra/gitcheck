@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 
 namespace GitCheck
 {
@@ -130,9 +131,23 @@ namespace GitCheck
             var p = new Process();
             p.StartInfo.UseShellExecute = false;
             p.StartInfo.RedirectStandardOutput = true;
-            p.StartInfo.FileName = "cmd";
-            p.StartInfo.Arguments = $"/c {cmd}";
+            p.StartInfo.RedirectStandardError = true;
+
+            var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+
+            if (isWindows)
+            {
+                p.StartInfo.FileName = "cmd";
+                p.StartInfo.Arguments = $"/c {cmd}";
+            }
+            else
+            {
+                p.StartInfo.FileName = "/bin/bash";
+                p.StartInfo.Arguments = $"-c \" {cmd} \"";
+            }
+
             p.Start();
+
             var output = p.StandardOutput.ReadToEnd();
             p.WaitForExit();
             return output;
