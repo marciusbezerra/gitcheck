@@ -1,0 +1,16 @@
+{
+  "ignoredNoGitDirs": [
+    "**/xcode",
+    "*/obj",
+    "*/bin",
+    "*/.vscode",
+    "**/AspNetCore",
+    "**/Ionic",
+    "**/.Net Core",
+    "**/Xamarin",
+    "**/Node",
+    "**/Blazor",
+    "**/Console"
+  ],
+  "ignoredNoGitFiles": [".DS_Store"]
+}
