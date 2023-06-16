@@ -1,15 +1,18 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
-using System.Text;
+using System.Linq;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.FileSystemGlobbing;
 
 namespace GitCheck
 {
     class Program
     {
+        const string Version = "1.0.3";
+
         private static List<string> ListGitNoRemote = new List<string>();
         private static List<string> ListGitBranchesNoPushed = new List<string>();
         private static List<string> ListGitWithUntrackedFiles = new List<string>();
@@ -18,6 +21,11 @@ namespace GitCheck
         private static List<string> ListGitNoPushed = new List<string>();
         private static List<string> ListGitOk = new List<string>();
         private static List<string> ListGitUnknown = new List<string>();
+        private static List<string> ListRootLevelTwoNoGit = new List<string>();
+        private static List<string> ListRootFiles = new List<string>();
+
+        private static Config Config = new();
+
 
 
         // changes not staged for commit
@@ -28,7 +36,8 @@ namespace GitCheck
 
         static void Main(string[] args)
         {
-            LogoService.PrintLogo();
+            Config = GetConfig();
+            LogoService.PrintLogo(Version);
             Console.WriteLine();
             var curDir = Directory.GetCurrentDirectory();
             Console.WriteLine($"Getting directory list from '{curDir}'...");
@@ -74,10 +83,28 @@ namespace GitCheck
 
             }
 
+            SearchLevelTwoNoGitDirectories(curDir);
+            SearchRootFiles(curDir);
+
             Directory.SetCurrentDirectory(curDir);
 
             Console.Clear();
-            LogoService.PrintLogo();
+            LogoService.PrintLogo(Version);
+
+            if (Config.IgnoredNoGitDirs.Count > 0 || Config.IgnoredNoGitFiles.Count > 0)
+            {
+                Console.WriteLine();
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.Write("Ignoring no git folders: ");
+                Console.ForegroundColor = ConsoleColor.White;
+                Console.WriteLine(string.Join(", ", Config.IgnoredNoGitDirs));
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.Write("Ignoring no git files: ");
+                Console.ForegroundColor = ConsoleColor.White;
+                Console.WriteLine(string.Join(", ", Config.IgnoredNoGitFiles));
+                Console.ResetColor();
+            }
+
 
             if (ListGitNoRemote.Count > 0)
             {
@@ -163,7 +190,46 @@ namespace GitCheck
                 Console.ResetColor();
             }
 
+            if (ListRootLevelTwoNoGit.Count > 0)
+            {
+                Console.WriteLine();
+                Console.ForegroundColor = ConsoleColor.White;
+                Console.WriteLine("DIRECTORIES WITHOUT GIT (MAX TWO LEVELS):");
+                Console.ForegroundColor = ConsoleColor.Magenta;
+                foreach (var item in ListRootLevelTwoNoGit) Console.WriteLine(item);
+                Console.ResetColor();
+            }
+
+            if (ListRootFiles.Count > 0)
+            {
+                Console.WriteLine();
+                Console.ForegroundColor = ConsoleColor.White;
+                Console.WriteLine("ROOT FILES:");
+                Console.ForegroundColor = ConsoleColor.Magenta;
+                foreach (var item in ListRootFiles) Console.WriteLine(item);
+                Console.ResetColor();
+            }
+
             Console.WriteLine("bye!");
+        }
+
+        private static void SearchRootFiles(string path)
+        {
+            ListRootFiles = Directory.GetFiles(path).Where(path => !FileDirectoryMatchesPatterns(path, Config.IgnoredNoGitFiles)).ToList();
+        }
+
+        private static void SearchLevelTwoNoGitDirectories(string path, int level = 0)
+        {
+            if (!Directory.Exists(Path.Combine(path, ".git")))
+                if (!FileDirectoryMatchesPatterns(path, Config.IgnoredNoGitDirs))
+                    ListRootLevelTwoNoGit.Add(path);
+
+            if (level < 2)
+            {
+                string[] directories = Directory.GetDirectories(path);
+                foreach (string directory in directories)
+                    SearchLevelTwoNoGitDirectories(directory, level + 1);
+            }
         }
 
         private static string DoCmd(string cmd)
@@ -200,6 +266,39 @@ namespace GitCheck
             {
                 Console.OutputEncoding = consoleEncoding;
             }
+        }
+
+        private static Config GetConfig()
+        {
+            var appDirectory = GetApplicationDirectory();
+            var config = new ConfigurationBuilder()
+                .SetBasePath(appDirectory)
+                .AddJsonFile("config.json", optional: true)
+                .Build();
+
+            var configObject = config.Get<Config>();
+
+            return configObject ?? new Config();
+        }
+
+        private static string GetApplicationDirectory()
+        {
+            var exePath = System.Reflection.Assembly.GetEntryAssembly().Location;
+            var exeDirectory = Path.GetDirectoryName(exePath);
+
+            return exeDirectory;
+        }
+
+        static bool FileDirectoryMatchesPatterns(string path, List<string> patterns)
+        {
+            var matcher = new Matcher();
+            matcher.AddIncludePatterns(patterns);
+
+            var directory = Path.GetDirectoryName(path);
+            var fileName = Path.GetFileName(path);
+            var result = matcher.Match(directory, fileName);
+
+            return result.HasMatches;
         }
     }
 }
