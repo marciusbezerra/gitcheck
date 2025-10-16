@@ -1,16 +1,24 @@
 {
   "ignoredNoGitDirs": [
-    "**/xcode",
-    "*/obj",
-    "*/bin",
-    "*/.vscode",
+    "**/Astro",
+    "**/WebApi",
+    "**/C# .NET",
     "**/AspNetCore",
     "**/Ionic",
-    "**/.Net Core",
-    "**/Xamarin",
     "**/Node",
     "**/Blazor",
-    "**/Console"
+    "**/Console",
+    "**/Python",
+    "**/ReactNative",
+    "**/React",
+    "**/C++",
+    "**/Angular",
+    "**/MAUI",
+    "**/AzureFunctions",
+    "**/Html",
+    "**/NextJs"
   ],
-  "ignoredNoGitFiles": [".DS_Store"]
+  "ignoredNoGitFiles": [
+    "**/default-profile.code-profile"
+  ]
 }
