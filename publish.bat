@@ -1,1 +1,2 @@
+@echo off
 dotnet publish -c release -o d:\Dropbox\InWindowsPath\GitCheck
