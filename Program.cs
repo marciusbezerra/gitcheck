@@ -8,7 +8,7 @@ using GitCheck;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.FileSystemGlobbing;
 
-const string Version = "1.0.4";
+const string Version = "1.0.6";
 
 List<string> ListGitNoRemote = [];
 List<string> ListGitBranchesNoPushed = [];
@@ -18,9 +18,10 @@ List<string> ListGitWithoutCommit = [];
 List<string> ListGitNoPushed = [];
 List<string> ListGitOk = [];
 List<string> ListGitUnknown = [];
-List<string> ListRootLevelTwoNoGit = [];
+List<string> ListProjectRootNoGit = [];
+List<string> ListFoldersOutsideProjectRoot = [];
 List<string> ListRootFiles = [];
-Config Config = new();
+
 
 // changes not staged for commit
 // changes to be committed
@@ -28,10 +29,10 @@ Config Config = new();
 // your branch is up to date with
 // nothing to commit, working tree clean
 
-Config = GetConfig();
+var Config = GetConfig();
 LogoService.PrintLogo(Version);
 Console.WriteLine();
-var curDir = Directory.GetCurrentDirectory();
+var curDir = Directory.GetCurrentDirectory(); // @D:\Projects
 Console.WriteLine($"Getting directory list from '{curDir}'...");
 Console.WriteLine();
 
@@ -77,7 +78,7 @@ foreach (var gitDir in gitRepositories)
 
 }
 
-SearchLevelTwoNoGitDirectories(curDir);
+SearchProjectRoots(curDir);
 SearchRootFiles(curDir);
 
 Directory.SetCurrentDirectory(curDir);
@@ -183,13 +184,23 @@ if (ListGitUnknown.Count > 0)
     Console.ResetColor();
 }
 
-if (ListRootLevelTwoNoGit.Count > 0)
+if (ListProjectRootNoGit.Count > 0)
 {
     Console.WriteLine();
     Console.ForegroundColor = ConsoleColor.White;
-    Console.WriteLine("DIRECTORIES WITHOUT GIT (MAX TWO LEVELS):");
+    Console.WriteLine("DIRECTORIES WITHOUT GIT (INSIDE PROJECT ROOT):");
     Console.ForegroundColor = ConsoleColor.Magenta;
-    foreach (var item in ListRootLevelTwoNoGit) Console.WriteLine(item);
+    foreach (var item in ListProjectRootNoGit) Console.WriteLine(item);
+    Console.ResetColor();
+}
+
+if (ListFoldersOutsideProjectRoot.Count > 0)
+{
+    Console.WriteLine();
+    Console.ForegroundColor = ConsoleColor.White;
+    Console.WriteLine("DIRECTORIES OUTSIDE PROJECT ROOT:");
+    Console.ForegroundColor = ConsoleColor.Magenta;
+    foreach (var item in ListFoldersOutsideProjectRoot) Console.WriteLine(item);
     Console.ResetColor();
 }
 
@@ -205,18 +216,101 @@ if (ListRootFiles.Count > 0)
 
 Console.WriteLine("bye!");
 
+void SearchProjectRoots(string rootPath)
+{
+    var projectRootFiles = Directory.GetFiles(rootPath, ".gitcheckprojroot", SearchOption.AllDirectories);
+
+    if (projectRootFiles.Length == 0)
+    {
+        Console.WriteLine("No project roots found (.gitcheckprojroot)");
+        return;
+    }
+
+    var projectRoots = projectRootFiles
+        .Select(file => Path.GetDirectoryName(file))
+        .OrderBy(path => path)
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    var allProcessedFolders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    // Process first-level directories within each project root
+    foreach (var projectRoot in projectRoots.OrderBy(p => p))
+    {
+        Console.WriteLine($"Processing project root: {projectRoot}");
+
+        var firstLevelDirs = Directory.GetDirectories(projectRoot)
+            .Where(d => !allProcessedFolders.Contains(d))
+            .ToList();
+
+        foreach (var directory in firstLevelDirs)
+        {
+            allProcessedFolders.Add(directory);
+
+            // Skip if this directory is itself a project root
+            if (projectRoots.Contains(directory))
+            {
+                Console.WriteLine($"  {directory} -> IS A PROJECT ROOT (SKIPPING)");
+                continue;
+            }
+
+            if (Directory.Exists(Path.Combine(directory, ".git")))
+            {
+                Console.WriteLine($"  {directory} -> HAS GIT (SKIPPING)");
+                continue;
+            }
+
+            if (FileDirectoryMatchesPatterns(directory, Config.IgnoredNoGitDirs))
+            {
+                Console.WriteLine($"  {directory} -> MATCHES IGNORED PATTERNS (SKIPPING)");
+                continue;
+            }
+
+            Console.WriteLine($"  {directory} -> NO GIT (ADDING TO LIST)");
+            ListProjectRootNoGit.Add(directory);
+        }
+    }
+
+    // Find first-level directories outside of all project roots
+    var allFirstLevelDirs = Directory.GetDirectories(rootPath)
+        .Where(d => !allProcessedFolders.Contains(d))
+        .ToList();
+
+    foreach (var directory in allFirstLevelDirs)
+    {
+        // Skip if this directory is a project root
+        if (projectRoots.Contains(directory))
+        {
+            Console.WriteLine($"{directory} -> IS A PROJECT ROOT (SKIPPING)");
+            continue;
+        }
+
+        var isInsideAnyProjectRoot = projectRoots.Any(pr =>
+            directory.StartsWith(pr, StringComparison.OrdinalIgnoreCase) &&
+            Path.GetDirectoryName(directory) == pr);
+
+        if (isInsideAnyProjectRoot)
+        {
+            continue;
+        }
+
+        if (FileDirectoryMatchesPatterns(directory, Config.IgnoredNoGitDirs))
+        {
+            Console.WriteLine($"{directory} -> MATCHES IGNORED PATTERNS (SKIPPING)");
+            continue;
+        }
+
+        Console.WriteLine($"{directory} -> OUTSIDE PROJECT ROOT (ADDING TO LIST)");
+        ListFoldersOutsideProjectRoot.Add(directory);
+    }
+
+    Console.WriteLine("\nSUMMARY:");
+    Console.WriteLine($"Projects without git in project roots: {ListProjectRootNoGit.Count}");
+    Console.WriteLine($"Folders outside project roots: {ListFoldersOutsideProjectRoot.Count}");
+}
+
 void SearchRootFiles(string path)
 {
     ListRootFiles = Directory.GetFiles(path).Where(path => !FileDirectoryMatchesPatterns(path, Config.IgnoredNoGitFiles)).ToList();
-}
-
-void SearchLevelTwoNoGitDirectories(string path)
-{
-    ListRootLevelTwoNoGit = Directory.GetDirectories(path)
-        .Where(d => !d.EndsWith(".git"))
-        .Where(d => gitRepositories == null || gitRepositories.Select(g => Path.GetDirectoryName(g)).All(gitRepo => !d.StartsWith(gitRepo)))
-        .Where(d => !FileDirectoryMatchesPatterns(d, Config.IgnoredNoGitDirs))
-        .ToList();
 }
 
 string DoCmd(string cmd)
@@ -278,12 +372,28 @@ string GetApplicationDirectory()
 
 bool FileDirectoryMatchesPatterns(string path, List<string> patterns)
 {
+    if (patterns == null || patterns.Count == 0)
+        return false;
+
     var matcher = new Matcher();
     matcher.AddIncludePatterns(patterns);
 
-    var directory = Path.GetDirectoryName(path);
-    var fileName = Path.GetFileName(path);
-    var result = matcher.Match(directory, fileName);
+    var normalizedPath = path.Replace("\\", "/");
 
-    return result.HasMatches;
+    var result = matcher.Match(normalizedPath);
+    if (result.HasMatches)
+        return true;
+
+    var parts = normalizedPath.Split('/');
+    foreach (var part in parts)
+    {
+        if (string.IsNullOrWhiteSpace(part))
+            continue;
+
+        result = matcher.Match(part);
+        if (result.HasMatches)
+            return true;
+    }
+
+    return false;
 }
