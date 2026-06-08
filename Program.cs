@@ -33,6 +33,7 @@ var Config = GetConfig();
 LogoService.PrintLogo(Version);
 Console.WriteLine();
 var curDir = Directory.GetCurrentDirectory(); // @D:\Projects
+// var curDir = "/Users/marciusbezerra/Projetos";
 Console.WriteLine($"Getting directory list from '{curDir}'...");
 Console.WriteLine();
 
